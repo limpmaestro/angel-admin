@@ -1,145 +1,140 @@
 import React, { useState, useEffect } from 'react';
 import { Phone, Calendar, TrendingUp, Clock } from 'lucide-react';
-import { format } from 'date-fns';
-import { sv } from 'date-fns/locale';
+import { createClient } from '@supabase/supabase-js';
 
-const mockStats = {
-  totalCalls: 47,
-  todayCalls: 8,
-  bookings: 12,
-  conversionRate: 68,
-  avgDuration: "4:32",
-  activeNow: 2
-};
-
-const recentCalls = [
-  { id: 1, phone: "070-123 45 67", type: "VVS", issue: "Vattenläcka i köket", time: "14:32", status: "Bokad", urgent: true },
-  { id: 2, phone: "073-987 65 43", type: "EL", issue: "Säkringen går", time: "14:15", status: "Klar", urgent: false },
-  { id: 3, phone: "076-555 12 34", type: "BYGG", issue: "Fuktskada i källare", time: "13:48", status: "Bokad", urgent: true },
-  { id: 4, phone: "070-111 22 33", type: "SNICKERI", issue: "Dörr måste justeras", time: "13:20", status: "Väntar", urgent: false },
-  { id: 5, phone: "072-444 55 66", type: "VVS", issue: "Varmvatten fungerar inte", time: "12:55", status: "Bokad", urgent: false },
-];
-
-const upcomingBookings = [
-  { id: 1, customer: "Anna Svensson", type: "VVS", date: "2024-03-09", time: "09:00", address: "Storgatan 12" },
-  { id: 2, customer: "Erik Johansson", type: "EL", date: "2024-03-09", time: "13:30", address: "Kungsgatan 45" },
-  { id: 3, customer: "Maria Lind", type: "BYGG", date: "2024-03-10", time: "10:00", address: "Drottninggatan 8" },
-];
-
-function StatCard({ label, value, change, icon: Icon, color }) {
-  return (
-    <div className="stat-card">
-      <div className="stat-header">
-        <span className="stat-label">{label}</span>
-        <div className={`stat-icon ${color}`}>
-          <Icon size={20} />
-        </div>
-      </div>
-      <div className="stat-value">{value}</div>
-      {change && (
-        <div className={`stat-change ${change.startsWith('+') ? 'positive' : 'negative'}`}>
-          {change} från förra veckan
-        </div>
-      )}
-    </div>
-  );
-}
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 function Dashboard() {
-  const [currentTime, setCurrentTime] = useState(new Date());
-  
+  const [stats, setStats] = useState({
+    todayCalls: 0,
+    newBookings: 0,
+    conversionRate: 0,
+    avgDuration: '0:00'
+  });
+  const [recentCalls, setRecentCalls] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-    return () => clearInterval(timer);
+    fetchDashboardData();
   }, []);
 
+  async function fetchDashboardData() {
+    setLoading(true);
+    
+    // Hämta alla samtal
+    const { data: calls, error } = await supabase
+      .from('calls')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching dashboard data:', error);
+      setLoading(false);
+      return;
+    }
+
+    const callsList = calls || [];
+    
+    // Dagens datum (svensk tid)
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Filtrera dagens samtal
+    const todayCalls = callsList.filter(c => c.created_at?.startsWith(today)).length;
+    
+    // Nya bokningar (totalt, inte bara idag)
+    const newBookings = callsList.filter(c => c.intent === 'bokning').length;
+    
+    // Konverteringsgrad (bokningar / totalt samtal)
+    const conversionRate = callsList.length > 0 
+      ? Math.round((newBookings / callsList.length) * 100) 
+      : 0;
+    
+    // Snittlängd
+    const totalDuration = callsList.reduce((sum, c) => sum + (c.duration_seconds || 0), 0);
+    const avgSeconds = callsList.length > 0 ? Math.round(totalDuration / callsList.length) : 0;
+    const avgMinutes = Math.floor(avgSeconds / 60);
+    const avgSecs = avgSeconds % 60;
+    const avgDuration = `${avgMinutes}:${avgSecs.toString().padStart(2, '0')}`;
+
+    setStats({
+      todayCalls,
+      newBookings,
+      conversionRate,
+      avgDuration
+    });
+
+    // Senaste 5 samtalen
+    setRecentCalls(callsList.slice(0, 5));
+    setLoading(false);
+  }
+
+  const statCards = [
+    { icon: Phone, label: 'Dagens samtal', value: stats.todayCalls, change: null },
+    { icon: Calendar, label: 'Nya bokningar', value: stats.newBookings, change: null },
+    { icon: TrendingUp, label: 'Konverteringsgrad', value: `${stats.conversionRate}%`, change: null },
+    { icon: Clock, label: 'Snittlängd', value: stats.avgDuration, change: null }
+  ];
+
+  if (loading) {
+    return <div style={{ padding: '24px' }}>Laddar...</div>;
+  }
+
   return (
-    <div>
-      <div className="page-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h1>Översikt</h1>
-            <p>{format(currentTime, "EEEE d MMMM yyyy", { locale: sv })}</p>
-          </div>
-          <div className="live-indicator">
-            <span className="pulse"></span>
-            <span>{mockStats.activeNow} aktiva samtal</span>
-          </div>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div>
+          <h1 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '4px' }}>Översikt</h1>
+          <p style={{ color: '#64748b' }}>{new Date().toLocaleDateString('sv-SE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981' }}>
+          <span style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '50%' }}></span>
+          <span>0 aktiva samtal</span>
         </div>
       </div>
 
-      <div className="stats-grid">
-        <StatCard label="Dagens samtal" value={mockStats.todayCalls} change="+23%" icon={Phone} color="blue" />
-        <StatCard label="Nya bokningar" value={mockStats.bookings} change="+12%" icon={Calendar} color="green" />
-        <StatCard label="Konverteringsgrad" value={`${mockStats.conversionRate}%`} change="+5%" icon={TrendingUp} color="orange" />
-        <StatCard label="Snittlängd" value={mockStats.avgDuration} icon={Clock} color="pink" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '24px', marginBottom: '32px' }}>
+        {statCards.map((card, index) => {
+          const Icon = card.icon;
+          return (
+            <div key={index} style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <span style={{ color: '#64748b' }}>{card.label}</span>
+                <Icon size={20} style={{ color: '#6366f1' }} />
+              </div>
+              <div style={{ fontSize: '32px', fontWeight: '700', marginBottom: '4px' }}>{card.value}</div>
+              {card.change && <div style={{ color: '#10b981', fontSize: '14px' }}>{card.change}</div>}
+            </div>
+          );
+        })}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">Senaste samtalen</h3>
-          </div>
-          <div className="table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Tid</th>
-                  <th>Ärende</th>
-                  <th>Typ</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentCalls.map(call => (
-                  <tr key={call.id}>
-                    <td>{call.time}</td>
-                    <td>
-                      <div style={{ fontWeight: 500 }}>{call.issue}</div>
-                      <div style={{ fontSize: '12px', color: 'var(--gray-600)' }}>{call.phone}</div>
-                    </td>
-                    <td>
-                      <span className={`badge badge-${call.type.toLowerCase()}`}>
-                        {call.type}
-                      </span>
-                      {call.urgent && <span className="badge badge-urgent" style={{ marginLeft: '4px' }}>AKUT</span>}
-                    </td>
-                    <td>
-                      <span className={`badge badge-${call.status === 'Klar' ? 'completed' : call.status === 'Bokad' ? 'completed' : 'pending'}`}>
-                        {call.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <h3 style={{ marginBottom: '16px' }}>Senaste samtalen</h3>
+          {recentCalls.length === 0 ? (
+            <p style={{ color: '#64748b' }}>Inga samtal ännu</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {recentCalls.map(call => (
+                <div key={call.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', background: '#f8fafc', borderRadius: '8px' }}>
+                  <div>
+                    <div style={{ fontWeight: '600' }}>{call.customer_name || 'Okänd'}</div>
+                    <div style={{ fontSize: '14px', color: '#64748b' }}>{call.intent || 'Okänt'}</div>
+                  </div>
+                  <div style={{ fontSize: '14px', color: '#64748b' }}>
+                    {new Date(call.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">Kommande bokningar</h3>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {upcomingBookings.map(booking => (
-              <div key={booking.id} style={{ 
-                padding: '16px', 
-                background: 'var(--gray-100)', 
-                borderRadius: 'var(--radius-sm)',
-                borderLeft: '4px solid var(--primary)'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontWeight: 600 }}>{booking.customer}</span>
-                  <span className={`badge badge-${booking.type.toLowerCase()}`}>{booking.type}</span>
-                </div>
-                <div style={{ fontSize: '14px', color: 'var(--gray-600)', display: 'flex', gap: '16px' }}>
-                  <span>📅 {format(new Date(booking.date), 'd MMM', { locale: sv })}</span>
-                  <span>🕐 {booking.time}</span>
-                  <span>📍 {booking.address}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+        <div style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <h3 style={{ marginBottom: '16px' }}>Kommande bokningar</h3>
+          <p style={{ color: '#64748b' }}>Inga bokningar ännu</p>
         </div>
       </div>
     </div>

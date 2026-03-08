@@ -1,64 +1,150 @@
-import React from 'react';
-import { BarChart3, TrendingUp, Users, Phone, Clock, Calendar } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Phone, Calendar, Users, Clock } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 function Statistics() {
-  const stats = [
-    { label: 'Totalt samtal', value: '156', change: '+12%', icon: Phone, color: '#0ea5e9' },
-    { label: 'Bokade jobb', value: '89', change: '+8%', icon: Calendar, color: '#10b981' },
-    { label: 'Nya kunder', value: '34', change: '+15%', icon: Users, color: '#f59e0b' },
-    { label: 'Genomsnittlig tid', value: '4:32', change: '-5%', icon: Clock, color: '#8b5cf6' },
+  const [stats, setStats] = useState({
+    totalCalls: 0,
+    bookings: 0,
+    newCustomers: 0,
+    avgDuration: 0
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  async function fetchStats() {
+    setLoading(true);
+    
+    // Hämta alla samtal
+    const { data: calls, error } = await supabase
+      .from('calls')
+      .select('*');
+    
+    if (error) {
+      console.error('Error fetching stats:', error);
+      setLoading(false);
+      return;
+    }
+
+    // Beräkna statistik
+    const totalCalls = calls?.length || 0;
+    const bookings = calls?.filter(c => c.intent === 'bokning').length || 0;
+    const newCustomers = calls?.filter(c => c.customer_name && c.customer_name !== 'Okänd kund').length || 0;
+    
+    // Beräkna genomsnittlig samtalstid
+    const totalDuration = calls?.reduce((sum, c) => sum + (c.duration_seconds || 0), 0) || 0;
+    const avgDuration = totalCalls > 0 ? Math.round(totalDuration / totalCalls) : 0;
+    
+    // Formatera till minuter:sekunder
+    const avgMinutes = Math.floor(avgDuration / 60);
+    const avgSeconds = avgDuration % 60;
+    const avgDurationFormatted = `${avgMinutes}:${avgSeconds.toString().padStart(2, '0')}`;
+
+    setStats({
+      totalCalls,
+      bookings,
+      newCustomers,
+      avgDuration: avgDurationFormatted
+    });
+    
+    setLoading(false);
+  }
+
+  const statCards = [
+    {
+      icon: Phone,
+      label: 'Totalt samtal',
+      value: stats.totalCalls,
+      change: null, // Tar bort påhittad procent
+      color: 'blue'
+    },
+    {
+      icon: Calendar,
+      label: 'Bokade jobb',
+      value: stats.bookings,
+      change: null,
+      color: 'green'
+    },
+    {
+      icon: Users,
+      label: 'Nya kunder',
+      value: stats.newCustomers,
+      change: null,
+      color: 'orange'
+    },
+    {
+      icon: Clock,
+      label: 'Genomsnittlig tid',
+      value: stats.avgDuration,
+      change: null,
+      color: 'purple'
+    }
   ];
 
-  const weeklyData = [
-    { day: 'Mån', calls: 12 },
-    { day: 'Tis', calls: 19 },
-    { day: 'Ons', calls: 15 },
-    { day: 'Tor', calls: 22 },
-    { day: 'Fre', calls: 28 },
-    { day: 'Lör', calls: 8 },
-    { day: 'Sön', calls: 5 },
-  ];
+  if (loading) {
+    return <div style={{ padding: '24px' }}>Laddar statistik...</div>;
+  }
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px', fontFamily: 'system-ui, sans-serif', background: '#f8fafc', minHeight: '100vh' }}>
-      <div style={{ marginBottom: '32px' }}>
-        <h1 style={{ fontSize: '28px', fontWeight: '700', margin: '0 0 8px 0', color: '#0f172a' }}>Statistik</h1>
-        <p style={{ color: '#64748b', margin: 0 }}>Översikt över samtal och bokningar</p>
-      </div>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px' }}>
+      <h1 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '8px' }}>Statistik</h1>
+      <p style={{ color: '#64748b', marginBottom: '24px' }}>Översikt över samtal och bokningar</p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-        {stats.map((stat, index) => {
-          const Icon = stat.icon;
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+        gap: '24px' 
+      }}>
+        {statCards.map((card, index) => {
+          const Icon = card.icon;
           return (
-            <div key={index} style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: `${stat.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: stat.color }}>
-                  <Icon size={24} />
+            <div key={index} style={{
+              background: 'white',
+              padding: '24px',
+              borderRadius: '12px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+            }}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'flex-start',
+                marginBottom: '16px'
+              }}>
+                <div style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '12px',
+                  background: card.color === 'blue' ? '#dbeafe' : 
+                             card.color === 'green' ? '#dcfce7' : 
+                             card.color === 'orange' ? '#ffedd5' : '#f3e8ff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Icon size={24} style={{
+                    color: card.color === 'blue' ? '#2563eb' : 
+                           card.color === 'green' ? '#16a34a' : 
+                           card.color === 'orange' ? '#ea580c' : '#9333ea'
+                  }} />
                 </div>
-                <span style={{ fontSize: '14px', fontWeight: '600', color: stat.change.startsWith('+') ? '#10b981' : '#dc2626' }}>
-                  {stat.change}
-                </span>
               </div>
-              <h3 style={{ margin: '0 0 4px 0', fontSize: '32px', fontWeight: '700', color: '#0f172a' }}>{stat.value}</h3>
-              <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>{stat.label}</p>
+
+              <div style={{ fontSize: '32px', fontWeight: '700', marginBottom: '4px' }}>
+                {card.value}
+              </div>
+              <div style={{ color: '#64748b', fontSize: '14px' }}>
+                {card.label}
+              </div>
             </div>
           );
         })}
-      </div>
-
-      <div style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-        <h3 style={{ margin: '0 0 24px 0', fontSize: '18px', color: '#0f172a' }}>Samtal denna vecka</h3>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', height: '200px' }}>
-          {weeklyData.map((day, index) => (
-            <div key={index} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '100%', background: '#e2e8f0', borderRadius: '4px', height: '100%', position: 'relative' }}>
-                <div style={{ position: 'absolute', bottom: 0, width: '100%', background: '#0f172a', borderRadius: '4px', height: `${(day.calls / 30) * 100}%` }} />
-              </div>
-              <span style={{ fontSize: '12px', color: '#64748b' }}>{day.day}</span>
-              <span style={{ fontSize: '12px', fontWeight: '600', color: '#0f172a' }}>{day.calls}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );

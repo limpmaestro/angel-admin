@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Play, Pause, Download, Search, Phone, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
-// Supabase client
-const supabaseUrl = 'https://yiakpslwegyzhcljnavo.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpYWtwc2x3ZWd5emhjbGpuYXZvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDk3NzQxMywiZXhwIjoyMDg2NTUzNDEzfQ.fUS9SVmOayg43oAmZaY1HoPWMIoIYXdtHdqqFketz7U';
+// Supabase client från env-variabler
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 function AudioPlayer({ duration }) {
